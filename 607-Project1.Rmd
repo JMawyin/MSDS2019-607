@@ -1,0 +1,147 @@
+---
+title: "DATA 607 - Project 1"
+author: "Jose Mawyin"
+date: "9/11/2019"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+##Data Wrangling Chess Tournament Results
+
+###Overview
+
+We have the task of extracting information from a .CSV file that contains tabulated player information. The image below shows how the content of the
+.CSV file looks when open.
+
+![Raw Chess Data](https://raw.githubusercontent.com/JMawyin/MSDS2019-607/master/607-Project1-RawData.png)
+
+
+From this table we are asked to extract and output to a separate .CSV file the following:
+
+**Player’s Name, Player’s State, Total Number of Points, Player’s Pre-Rating, and Average Pre Chess Rating of Opponents**
+
+We notice that the information we need is spread around the file and we will need multiple steps to extract it and prepare the data that will go into the output file. For example, player's data is contained in two different lines. There are line separators between players "-------------" and the information contained in every row and column is a mix of strings and integers. 
+
+###Initial Data Extraction
+
+First, let's load the data from a file we have uploaded into GitHub, skipping the first line and using the second line as column labels. Then we will extract the padding between player entries "-------------". 
+```{r}
+library(magrittr)
+
+raw_data1 <- read.delim("https://raw.githubusercontent.com/JMawyin/MSDS2019/master/tournamentinfo.txt", header = TRUE, skip = 1, sep = "|", stringsAsFactors = FALSE)
+head(raw_data1,4)
+raw_data2 <- subset(raw_data1, Pair != "-----------------------------------------------------------------------------------------")
+head(raw_data2,4)
+
+raw.array.dimension <- dim(raw_data2)
+endrow <- raw.array.dimension[1:1]
+prune1 <- raw_data2[2:endrow, 1:10]
+head(prune1,4)
+
+
+```
+
+
+Then we will separate the cleaned dataframe into two frames, labeled "Odd.Row" and "Even.Row" below, each with 64 rows corresponding to the 64 players in the report. If we were to place both frames side-by-side, we would see that each row will contain different bits of information for the same player.
+
+```{r}
+#Splitting cleaned data  into two frames each of 64 rows. Each row contains
+#different bits of player information.
+Odd.Row <- prune1[ c(TRUE,FALSE), ] 
+Even.Row <- prune1[!c(TRUE,FALSE), ]
+
+head(Odd.Row,5) ;head(Even.Row,5)
+```
+
+The Player’s Pre-Rating information is contained in the frame that we have labeled "Even.Row" above. The information is in the column labeled "Player.Name" but the column contains a mix of integers and strings. For example in the entry:
+$$15445895 / R: 1794 ->1817$$
+
+The code below first separates the column into two components split around the string "\\->". One of the two components will contain:
+
+$$15445895 / R: 1794$$
+We then split this into two components around the string " / R: ". That will leave us with an entry containing:
+
+$$1794$$
+The last split around the string "P" is for those entries where the Player’s Pre-Rating information is preceded by a P.
+
+```{r}
+#Code below separate the Player’s Pre-Rating information from a string mixing
+#integers and character.
+even.prune <- t(as.data.frame(strsplit(as.character(Even.Row$Player.Name), "\\->")))  
+row.names(even.prune) <- c()
+
+even.prune2 <- t(as.data.frame(strsplit(as.character(even.prune[,1]), " / R: ")))   
+row.names(even.prune2) <- c()
+
+Even.prune3 <- t(as.data.frame(strsplit(as.character(even.prune2[,2]), "P")))   
+row.names(Even.prune3) <- c()
+head(Even.prune3,5)  
+
+Pre.Rating <- as.data.frame(as.numeric(trimws(Even.prune3[,1])))
+```
+
+
+Each competitor played a maximum of 7 games. The frame that we labeled "Odd.Row" above contains this information in 7 "Round" columns. However, the columns contain a mix of strings indicating wether the game was a win, loss or draw (W, L, D) and integers indicating the ID of the opponent. For example:
+
+$$W\quad 39$$
+This is the first round entry for the player "GARY HUA". This entry says that he won again the 39th player in the list. The code below separates the entries so that only the integers are left.
+```{r}
+#Code below separate players Total Number of Points and the opponents ID for each
+#of the 7 games played
+Odd.prune <- as.data.frame(lapply(Odd.Row[.4:11], function(x) as.numeric(gsub("[a-zA-Z ]", "", x))))
+row.names(Odd.prune) <- c()
+head(Odd.prune,5)
+```
+
+###Collating Data for Output File
+Now, that we have all the player information that we need we can create a new dataframe containin the following:
+
+**"Name", "State", "Total Points", "Pre-Rating", "Oppo1", "Oppo2", "Oppo3", "Oppo4", "Oppo5", "Oppo6","Oppo7"**
+
+We can also save this new dataframe as a .CSV file for future use.
+```{r}
+##Joining columns to form a new data frame contaning all the information of
+#interest for us.
+
+united <- as.data.frame(cbind(Odd.Row$Player.Name, Even.Row$Pair, Odd.prune$Total, Pre.Rating, Odd.prune[,4:10]))
+colnames(united) <- c("Name", "State", "Total Points", "Pre-Rating", "Oppo1", "Oppo2", "Oppo3", "Oppo4", "Oppo5", "Oppo6","Oppo7")
+head(united,4)
+
+write.csv(united, file = "/Users/josemawyin/Library/Mobile Documents/com~apple~CloudDocs/Data Science Masters /607/Project1/UnitedScores.csv")
+```
+
+###Calculation of Player’s Average Pre-Chess Rating of Opponents
+Now we need to calculate the Average Pre-Chess Rating of Opponents of every player. For example the Average Pre-Chess Rating of Opponents of the Gary Hua is 1605 was calculated by using the pre-tournament opponents’ ratings of 1436, 1563, 1600, 1610, 1649, 1663, 1716, and dividing by the total number of games played. We get the pre-tournament opponents’ ratings from the opponent ID. After we did some cleanup we have that for Gary Hua his opponents ID are:
+
+**39	21	18	14	7	12	4**
+
+We need to sum the Pre-Chess Rating of the 39th, 21st, 18th, 14th, 7th, 12th and 4th player and divide by the number of games wich in this case is 7. The code below matches the opponen ID to the opponent Pre-Chess Rating, takes into account games not played and calculates the average (mean).
+```{r}
+Average.Rating <- c()
+
+for(i in 1:64) {
+Average.Rating <- rbind(Average.Rating, mean( c(united[as.integer(united[i,5]),4] , united[as.integer(united[i,6]),4], united[as.integer(united[i,7]),4], united[as.integer(united[i,8]),4], united[as.integer(united[i,9]),4], united[as.integer(united[i,10]),4], united[as.integer(united[i,11]),4] ),na.rm=TRUE))
+}
+head(Average.Rating,4)
+str(Average.Rating)
+```
+
+###Preparation of Final Table and Output to .CSV File
+Finally, we can compile our final table containing the following:
+
+**"Player Name", "State", "Total Points", "Pre-Rating","Average Pre-Rating of Opponents"**
+
+and output to a .CSV file.
+
+```{r}
+Final.Table <- cbind(united[,1:4], round(Average.Rating,0))
+colnames(Final.Table) <- c("Player Name", "State", "Total Points", "Pre-Rating","Average Pre-Rating of Opponents")
+head(Final.Table,4)
+write.csv(Final.Table, file = "/Users/josemawyin/Library/Mobile Documents/com~apple~CloudDocs/Data Science Masters /607/Project1/Final_Table.csv")
+```
+
+This is how the final table looks like.
+![Final Table with Rankings](https://raw.githubusercontent.com/JMawyin/MSDS2019-607/master/607-Project1-FinalTable.png)
+
+
