@@ -1,0 +1,105 @@
+---
+title: "Tidying and Transforming Data"
+author: "Jose Mawyin"
+date: "9/23/2019"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyr)
+library(dplyr)
+```
+
+## Assigment 4 - DATA 607
+
+![Flight Detail Table](https://raw.githubusercontent.com/JMawyin/MSDS2019-607/master/607HW4Table.png)
+The chart above describes arrival delays for two airlines across five destinations. Your task is to:
+
+###(1) Create a .CSV file (or optionally, a MySQL database!) that includes all of the information above. You’re encouraged to use a “wide” structure similar to how the information appears above, so that you can practice tidying and transformations as described below.
+
+Lets import the data from a .CSV file hosted in GitHub.
+```{r}
+
+flight.data <- as_tibble(read.csv("https://raw.githubusercontent.com/JMawyin/MSDS2019-607/master/HW4FlightData.csv", na = "NULL",stringsAsFactors=FALSE))
+str(flight.data)
+```
+
+
+###(2)Read the information from your.CSV file into R,and use tidyr and dplyr as needed to tidy and transform your data.
+
+Then lets rename our columns and remove the empty rows with no data.
+```{r}
+##Rename column names
+colnames(flight.data) <- c("Airline", "Status", "Los.Angeles", "Phoenix", "San.Diego", "San.Francisco", "Seattle")
+
+##To remove rows with both NAs and empty
+flight.data <- flight.data[!apply(is.na(flight.data) | flight.data == "", 1, all),]
+flight.data
+```
+
+We can use the loop below to complete the missing airline name entries in the Airline column.
+```{r}
+for (row in 2:length(flight.data$Airline)){ # 2 so you don't affect column names
+    if(flight.data$Airline[row] == "") {    # if its empty...
+        flight.data$Airline[row] = flight.data$Airline[row-1] # ...replace with previous row's value
+    }
+}
+flight.data
+```
+
+Now we can use the Gather function to arrange our data into long form and facilitate later analysis.
+```{r}
+l.flight.data <- flight.data %>% gather(City, Count, -Airline, -Status)
+head(l.flight.data, 5)
+```
+
+
+Filtering columns by Flight Status ("On time" or "Delayed") and renaming by airport entries to signify count of arrivals by Flight Status ("OT", "DL")
+```{r}
+OT <- filter(l.flight.data, Status == "On time")
+
+DL <- filter(l.flight.data, Status == "Delayed")
+```
+
+
+###(3) Perform analysis to compare the arrival delays for the two airlines.
+
+First, lets calculate the total number of flights from the on-time and delayed flights count.
+```{r}
+Total.Flights <- OT[,4]+DL[,4]
+colnames(Total.Flights) <- c("Total Flights")
+```
+
+With the total number of flights we can calculate the percentage of on-time and delayed flights.
+```{r}
+percent.OT <- (100*OT[,4]/Total.Flights) %>% round(digits = 0)
+percent.DL <- (100*DL[,4]/Total.Flights) %>% round(digits = 0)
+```
+
+Lets bind together all the data of interest under the columns "Airline", "City", "Flights_On_Time" and "Flights_Delayed".
+```{r}
+flight.analysis <- cbind(OT[,1], OT[,3], percent.OT, percent.DL )
+colnames(flight.analysis) <- c("Airline", "City", "Flights_On_Time", "Flights_Delayed")
+```
+
+
+We can do a simple comparisson showing that the flights from Alaska airlines arriving in Phoneniz have the hightest percentage of flights arriving on-time.
+```{r}
+arrange(flight.analysis, desc(Flights_On_Time))
+```
+
+We can also show that the flights from Alaska airlines have an overall higher percentage (89%) of flights arriving on-time compared to AM West airlines (82%).
+```{r}
+AL.DATA <- filter(flight.analysis, Airline == "ALASKA")  
+mean(AL.DATA$Flights_On_Time) %>% round(digits = 0)
+AM.DATA <- filter(flight.analysis, Airline == "AM WEST")  
+mean(AM.DATA$Flights_On_Time) %>% round(digits = 0)
+```
+
+
+
+###(4) Your code should be in an R Markdown file, posted to rpubs.com, and should include narrative descriptions of your data cleanup work, analysis, and conclusions. Please include in your homework submission: The URL to the .Rmd file in your GitHub repository. and The URL for your rpubs.com web page.
