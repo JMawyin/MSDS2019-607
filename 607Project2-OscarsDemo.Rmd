@@ -1,0 +1,47 @@
+---
+title: "607 -Project 2 - Oscars"
+author: "Jose Mawyin"
+date: "10/6/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tibble)
+library(tidyr)
+library(dplyr)
+library(data.table)
+library(ggplot2)
+```
+
+## Oscar Winners Demographics
+
+###How has ethnicity shaped the movie industry?
+We will look at how the ethnic mix of Oscar winners has changed or nor in time by looking at a dataset that has collated Oscar Winner information from the years 1927 to 2014.
+```{r}
+Oscars <- read.csv("/Users/josemawyin/Downloads/Oscars-demographics-DFE.csv")
+```
+
+The dataset has many fields but of interest are race_ethnicity year_of_award
+```{r}
+str(Oscars)
+dim(Oscars)
+```
+Let's first find how many Oscars have been awarded based on ethnicity:
+```{r}
+summary(Oscars$race_ethnicity)
+```
+
+Then let's find when was the first Oscar awarded to an ethnicy other than "White":
+```{r}
+count(Oscars, year_of_award, race_ethnicity) %>% filter(race_ethnicity != "White") %>%  arrange(year_of_award)
+```
+We can see that in the period of 1927 to 1940 no Oscars were awarded to non-White winners. 
+
+Below we can see how the ethnic inclusivity has increased since the later quarter of the 20th century until the present.
+```{r}
+ggplot(Oscars, aes(year_of_award, fill = race_ethnicity)) +
+  geom_histogram(binwidth = 5) + ylab("Total Oscars Awarded") + xlab("Years") + ggtitle("Oscar Winners by Ethnicity")
+```
+
+Lack of inclusion for unrepresented members of the movie community is evident in the data shown in this study. However, there is been a change in the number of Oscar's awarded to other-than-white  Further study could see how does the number of winners compared to the total number of movie industry workers broke down by ethnicity. Are other-than-white represented?

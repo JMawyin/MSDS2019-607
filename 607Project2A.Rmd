@@ -1,0 +1,107 @@
+---
+title: "607 Project 2 - UK Renewable Generation"
+author: "Jose Mawyin"
+date: "10/5/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tibble)
+library(tidyr)
+library(dplyr)
+library(data.table)
+library(ggplot2)
+```
+
+## UK Energy Generation Data
+
+We will take a look at the breakdown of Renewable Generators ("Anaerobic digestion", "Hydro", "Micro CHP", "Photovoltaic", "Wind") in the different regions of the UK.
+```{r}
+UK.Renewables <- as_tibble(read.csv("https://raw.githubusercontent.com/JMawyin/MSDS2019-607/master/UKRenewables.csv"))
+```
+
+As we can see below, the dataset contains a mix of numeric and factor information as loaded into the dataframe.
+```{r}
+str(UK.Renewables)
+```
+
+Below we can see the different variables contained in the dataset.
+```{r}
+colnames(UK.Renewables)
+```
+
+How spread out are the installations based on their rated capacity? As we can see below, most installations are rated near 3 kilowatts. However, we have extreme outliers such as a system that was rated at 2000 kilowatts or almost 3 orders of magnitude larger than the typical installation size in kilowats.
+```{r}
+summary(UK.Renewables$InstalledCapacity)
+```
+```{r}
+Install.Cap <- UK.Renewables$InstalledCapacity
+Install.Cap[(Install.Cap == 0)] <- 1
+boxplot(Install.Cap, log = "y", col = "gold",  ylab="Installed Capacity (KiloWatts)",main="Variation in Renewable Generator Installed Capacity")
+
+```
+
+
+We can see below that most of the installations are of the domestic type, fllowed by commercial and community owned PV systems.
+```{r}
+table(UK.Renewables$InstallationTypeName)
+```
+
+Most of the installations are Photovoltaic per technology and domestic per installation type.
+```{r}
+T.Tech.Installs <- table(UK.Renewables$TechnologyTypeName)
+```
+
+**What is the breakdown of installations per Region and per Technology Type?
+```{r}
+ByRegion.Tech <- table(UK.Renewables$GovernmentOfficeRegionName,UK.Renewables$TechnologyTypeName)
+ByRegion.Tech
+#Converting from Table to Data Frame format
+DF.ByRegion.Tech <- as.data.frame.matrix(ByRegion.Tech) 
+
+```
+
+
+
+
+```{r}
+#Extractin Row Names and adding to Data Frame as First Column
+DF.ByRegion.Tech <- setDT(DF.ByRegion.Tech, keep.rownames = "Region")[]
+DF.ByRegion.Tech
+```
+
+
+How are the Renewable Generators installed in a per Region basis in the UK?
+```{r}
+dfm.ByRegion.Tech <- melt(DF.ByRegion.Tech[,c("Region", "Anaerobic digestion", "Hydro", "Micro CHP", "Photovoltaic", "Wind")],id.vars = 1)
+
+#reorder(,-value) orders the bars from high to low.
+ggplot(dfm.ByRegion.Tech,aes(x = reorder(Region, -value),y = value)) + 
+    geom_bar(aes(fill = variable),stat = "identity",position = "dodge") + theme(axis.text.x = element_text(angle = 90))+ ylab("Installations") + xlab("Districs in the UK") + ggtitle("Number of Installations per Region")
+```
+
+Calculating Installed Generation Capacity per Region and per Technology Type
+```{r}
+require(data.table) 
+DT <- data.table(UK.Renewables) 
+Region.Sums <- DT[ , .(Installed.Capacity = sum(InstalledCapacity)), by = .(GovernmentOfficeRegionName, TechnologyTypeName)]
+Region.Sums <- arrange(Region.Sums, GovernmentOfficeRegionName)
+Region.Sums
+```
+
+**Using Spread to Tyding up previous Data Frame.
+```{r}
+spread.Regions.Sum <- spread(Region.Sums, TechnologyTypeName, Installed.Capacity)
+```
+
+
+```{r}
+dfm.Region.Sums <- melt(spread.Regions.Sum[,c("GovernmentOfficeRegionName", "Anaerobic digestion", "Hydro", "Micro CHP", "Photovoltaic", "Wind")],id.vars = 1)
+
+#reorder(,-value) orders the bars from high to low.
+ggplot(dfm.Region.Sums,aes(x = reorder(GovernmentOfficeRegionName, -value),y = value)) + 
+    geom_bar(aes(fill = variable),stat = "identity",position = "dodge") + theme(axis.text.x = element_text(angle = 90))+ ylab("Installed Capacity (KiloWatts)") + xlab("Regions in the UK") + ggtitle("Installed Capacity per Region")
+```
+
+We have seen from the study above that the most common installation type and most installed generation capacity both correspond to Photovoltaic technology.

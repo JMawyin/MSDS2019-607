@@ -1,0 +1,73 @@
+---
+title: "607 Project 2 - Sheffield Land Analysis for Photovoltaics"
+author: "Jose Mawyin"
+date: "10/5/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tibble)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+```
+
+## City of Sheffield Land Analysis
+
+We will study the potential of using domestic and commerical rooftop area in the city of Sheffield to install Photovoltaic generators.
+```{r}
+Shef.Land <- as_tibble(read.csv("https://raw.githubusercontent.com/JMawyin/MSDS2019-607/master/SheffieldAreaStats.csv"))
+```
+
+The breakdown below shows the breakdown of surface area in Sheffield based on different types.
+```{r}
+colnames(Shef.Land)
+```
+
+The dataset has an area breakdown below the District level of interest for us. First, we need to add up all the per District components and focus on the Total Distric Area, Total Domestic Area and Total Commercial Area. (Area in thousands of square meters)
+```{r}
+##Using data.table to aggregate
+require(data.table) 
+DT <- data.table(Shef.Land) 
+District.Sums <- DT[ , .(Total.Area = sum(Total.Area.of.All.Land.Types), T.Area.Domestic = sum(Area.of.Domestic.Buildings),T.Area.Non.Domestic = sum(Area.of.Non.Domestic.Buildings)), by = .(District)]
+District.Sums 
+```
+
+Then we will use a simple estimate to calculate the generation potential per district and per location.
+```{r}
+#Roof Percentage Suitable for PV
+N.Domestic.PV.Suitable.PC <- .60
+Domestic.PV.Suitable.PC <- .22
+#Generation capacity of one thousand square meters of PV in kilowatts
+T.SM.Generation <- 150
+District.Sums <- mutate(District.Sums, PV.Capacity.Domestic.KW = round((T.Area.Domestic*Domestic.PV.Suitable.PC*T.SM.Generation),2), PV.Capacity.Non.Domestic.KW = round((T.Area.Non.Domestic*N.Domestic.PV.Suitable.PC*T.SM.Generation),2)) 
+District.Sums
+```
+
+**Ordering Data Frame "District.Sums" by descending values of the column "PV.Capacity.Non.Domestic.KW"**
+```{r}
+District.Sums <- arrange(District.Sums, desc(PV.Capacity.Non.Domestic.KW))
+```
+
+
+What are the Residential, Comercial and Photovoltaic generation statistics of the City of Sheffield?
+
+```{r}
+Shef.Area.Stats <- colSums(District.Sums[,2:6])
+Shef.Area.Stats
+#colnames(Shef.Area.Stats) <- c("Total Area", "Residential Area", "Commercial Area", "PV Potential Domestic", "PV Potential Commercial")
+```
+
+**What is the PV Generation Potential in KiloWatts of the different areas in the City of Sheffield.**
+
+```{r}
+dfm <- melt(District.Sums[,c('District','PV.Capacity.Domestic.KW','PV.Capacity.Non.Domestic.KW')],id.vars = 1)
+
+
+#reorder(,-value) orders the bars from high to low.
+ggplot(dfm,aes(x = reorder(District, -value),y = value)) + 
+    geom_bar(aes(fill = variable),stat = "identity",position = "dodge") + theme(axis.text.x = element_text(angle = 90))+ ylab("Generation Potential in KW") + xlab("City of Sheffield Districts")
+```
+
+We have shown a way to calculate the PV generation potential of the different districs in Sheffield.
