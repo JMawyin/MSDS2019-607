@@ -1,0 +1,188 @@
+---
+title: "607 - Project 3 - Soft Skills"
+author: "Jose Mawyin"
+date: "10/10/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+library(rvest)
+library(dplyr)
+```
+
+## Scraping Indeed for Soft Skills Relevant to a Data Scientist
+
+
+**First, lets load a serch page from Indeed with the query of Data Scientist Jobs based in a 15 mile radious around New York.**
+```{r}
+
+url <- "https://www.indeed.com/jobs?q=data+scientist&l=new+york&radius=15"
+page <- xml2::read_html(url)
+```
+
+
+
+
+**The code below scraps through indeed and sorts the info from job postings into 4 different columns: job_title, company_name, job_location, job_description**
+
+The code is not working properly as it only loads  19 entries. I think that at that point it finds a not working page, gets stuck and times out.
+
+```{r}
+
+page_result_start <- 10 # starting page 
+page_result_end <- 200 # last page results
+page_results <- seq(from = page_result_start, to = page_result_end, by = 10)
+ 
+full_df <- data.frame()
+for(i in seq_along(page_results)) {
+  
+  first_page_url <- "https://www.indeed.com/jobs?q=data+scientist&l=new+york&radius=15"
+  url <- paste0(first_page_url, "&start=", page_results[i])
+  page <- xml2::read_html(url)
+  # Sys.sleep pauses R for two seconds before it resumes
+  # Putting it there avoids error messages such as "Error in open.connection(con, "rb") : Timeout was reached"
+  Sys.sleep(2)
+  
+  #get the job title
+  job_title <- page %>% 
+    rvest::html_nodes("div") %>%
+    rvest::html_nodes(xpath = '//a[@data-tn-element = "jobTitle"]') %>%
+    rvest::html_attr("title")
+  
+  #get the company name
+  company_name <- page %>% 
+  rvest::html_nodes(".company") %>%
+  rvest::html_text() %>%
+  stringi::stri_trim_both()
+  
+  
+  #get job location
+  job_location <- page %>% 
+  rvest::html_nodes(".location") %>%
+  rvest::html_text()
+  
+  # get links
+  links <- page %>% 
+  rvest::html_nodes("div") %>%
+  rvest::html_nodes(xpath = '//*[@data-tn-element="jobTitle"]') %>%
+  rvest::html_attr("href")
+  
+  job_description <- c()
+  for(i in seq_along(links)) {
+    
+    url <- paste0("https://www.indeed.com/", links[i])
+    page <- xml2::read_html(url)
+    
+    job_description[[i]] <- page %>%
+  rvest::html_nodes("span")  %>% 
+  rvest::html_nodes(xpath = '//*[@class="jobsearch-JobComponent-description  icl-u-xs-mt--md  "]') %>% 
+  rvest::html_text() %>%
+  stringi::stri_trim_both()
+  }
+  df <- data.frame(job_title, company_name, job_location, job_description)
+  full_df <- rbind(full_df, df)
+}
+```
+
+```{r}
+dim(full_df)
+str(full_df)
+
+```
+
+
+
+
+```{r}
+library(tm)
+library(SnowballC)
+library(wordcloud)
+library(RCurl)
+library(XML)
+library(RColorBrewer)
+```
+
+
+
+
+```{r setup, include=FALSE}
+full_df$job_description
+# Create corpus
+corpus = Corpus(VectorSource(full_df$job_description))
+# Look at corpus
+#corpus[[1]][1]
+```
+
+
+```{r}
+#Conversion to Lowercase
+corpus = tm_map(corpus, PlainTextDocument)
+corpus = tm_map(corpus, tolower)
+ 
+#Removing Punctuation
+corpus = tm_map(corpus, removePunctuation)
+ 
+#Remove stopwords
+corpus = tm_map(corpus, removeWords, c("cloth", "experi", "work", "use", "will", "data", stopwords("english")))
+ 
+# Stemming
+corpus = tm_map(corpus, stemDocument)
+ 
+# Eliminate white spaces
+corpus = tm_map(corpus, stripWhitespace)
+corpus[[1]][1] 
+```
+
+```{r}
+length(corpus)
+```
+
+
+
+**Calculating word frequency in the "job_description" field and ordering by frequency.**
+
+```{r}
+DTM <- TermDocumentMatrix(corpus)
+mat <- as.matrix(DTM)
+f <- sort(rowSums(mat),decreasing=TRUE)
+dat <- data.frame(word = names(f),freq=f)
+head(dat, 50)
+```
+
+**Creating workcloud to visualize top words appearing in the "job_description" field.**
+
+```{r}
+set.seed(100)
+dev.new(width = 1500, height = 1500, unit = "px")
+wordcloud(words = dat$word, freq = dat$freq, min.freq = 100, max.words=200, random.order=FALSE, rot.per=0.30, scale=c(2,.5), colors=brewer.pal(8, "Dark2"))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
