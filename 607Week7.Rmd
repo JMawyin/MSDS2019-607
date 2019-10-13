@@ -1,0 +1,100 @@
+---
+title: "607 - Week 7"
+author: "Jose Mawyin"
+date: "10/9/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(XML)
+library(rjson)
+library(RCurl)
+```
+
+## Working with XML and JSON in R
+
+For this homework, I created a table in Numbers from MacOS and then exported the table as an .CSV file. Then I used the following online conversion tools to load the .CSV file and convert it to to the required formats.
+
+**Convert CSV to JSON, XML**
+
+http://www.convertcsv.com/csv-to-json.htm
+http://www.convertcsv.com/csv-to-xml.htm
+http://www.convertcsv.com/csv-to-html.htm
+
+
+###Loading HTML Table
+```{r}
+# Load HTML file
+HTML.File <- "/Users/josemawyin/Library/Mobile Documents/com~apple~CloudDocs/Data Science Masters /607/607Week7/FavBooks.htm"
+# Parse HTML data
+HTML.Table <- readHTMLTable(HTML.File)
+```
+
+The easiest load was from HTM into a data.frame using "readHTMLTable" from the XML package. Right away, you could use the created data.frame for further analysis.
+
+```{r}
+HTML.Table
+```
+
+
+###Loading XML File
+
+Extracting data from a XML file is a bit more elaborate because we need to specify the XML tag that defines the individual entries. To load the .XML file we use the "xmlParse" function from the XML package.
+```{r}
+# Load XML file
+XML.File <- "/Users/josemawyin/Library/Mobile Documents/com~apple~CloudDocs/Data Science Masters /607/607Week7/favbooks.xml"
+# Parse XML data
+xmlfile <- xmlParse(XML.File)
+xmlfile
+```
+
+Here we define the XML tag that defines a node or entry from the encoded table using the "xmlToDataFrame" function from the XML package.
+
+```{r}
+# Get place nodes
+XML.Table <- xmlToDataFrame(nodes=getNodeSet(xmlfile,"//row"))
+XML.Table
+colnames(XML.Table)
+```
+
+
+###Loading JSON File
+
+Working with a .JSON file was the most difficult from all the file types. I used the "fromJSON" function fromt the rJason package to load the file into a table.
+
+```{r}
+#Load JSON file
+JSON.File <- "/Users/josemawyin/Library/Mobile Documents/com~apple~CloudDocs/Data Science Masters /607/607Week7/FavBooks.json"
+# You can pass directly the filename
+my.JSON <- fromJSON(file=JSON.File)
+str(my.JSON)
+```
+
+The "fromJSON" function creates a list of list that now we need to parse through to create a data.frame. This we do below through the function "lapply".
+
+```{r}
+
+
+
+df <- lapply(my.JSON, function(play) # Loop through each "play"
+  {
+  # Convert each group to a data frame.
+  # This assumes you have 6 elements each time
+  data.frame(matrix(unlist(play), ncol=6, byrow=T))
+  })
+
+# Now you have a list of data frames, connect them together in
+# one single dataframe
+df <- do.call(rbind, df)
+
+# Make column names nicer, remove row names
+#colnames(df) <- names(my.JSON[[1]][[1]])
+colnames(df) <- colnames(XML.Table)
+rownames(df) <- NULL
+
+df
+```
+
+We have shown how loaded data from 3 different formats (HTML, XML and JSON) and successfully loaded the data into a data.frame. The conversion was easier with the HML and XML formats. However, JSON encapsulation of data into a string makes it suitable as a vehicle for tabulated data as well. 
+
