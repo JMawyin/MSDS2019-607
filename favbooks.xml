@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+  <row>
+    <Title>Evolution</Title>
+    <Authors>Stephen Baxter</Authors>
+    <Published_Date>January 1, 2003</Published_Date>
+    <Publisher>Del Rey</Publisher>
+    <ISBN>345457838</ISBN>
+    <Pages>672</Pages>
+  </row>
+  <row>
+    <Title>The Player of Games</Title>
+    <Authors>Iain M. Banks</Authors>
+    <Published_Date>March 26, 2008</Published_Date>
+    <Publisher>Orbit</Publisher>
+    <ISBN>316005401</ISBN>
+    <Pages>416</Pages>
+  </row>
+  <row>
+    <Title>Eye of Terra</Title>
+    <Authors>Graham McNeill, Aaron Dembski-Bowden, Chris Wraight, Gav Thorpe, Matthew Farrer, Rob Sanders</Authors>
+    <Published_Date>June 27, 2017</Published_Date>
+    <Publisher>Black Library</Publisher>
+    <ISBN>B074R7ZCDF</ISBN>
+    <Pages>480</Pages>
+  </row>
+</root>
