@@ -1,0 +1,87 @@
+---
+title: "607-Wk11-Discussion"
+author: "Jose Mawyin"
+date: "11/10/2019"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## DATA 607: Review of "Z Library" Recommender System 
+
+### Introduction
+
+This is a review of the recommender system of the site **ZLibrary** located at https://b-ok.org. This website offers links to download electronic versions of public domain and copyrigthed books. Depending on the book, there are different format availables for download such as .pdf, .epub, .mobi, .txt, .doc, and others.
+
+
+
+
+
+### Scenario Design
+
+The site offers access to copyrighted books so is under constant threat of being shutdown or at least to have content removed because of copyright violation. Therefore, the recommender system is basic as likely time and money investment in continously improving recomendations will not pay back. Once in the main page of the site, you enter some information related to the book such as, title, author, ISBN code and the system will search for matches using this information.
+
+
+
+```{r, fig.height=4,echo=FALSE}
+#, fig.cap="Before Selection" 
+library(png)
+library(grid)
+img <- readPNG("/Users/josemawyin/Library/Mobile Documents/com~apple~CloudDocs/Data Science Masters /607/Screen Shot 2019-11-10 at 2.42.32 PM.png")
+ grid.raster(img)
+```
+
+At the time of this review the site offered **4,884,388 books 76,132,882 articles for free**. It has a huge selection of items, similar in scope to the items offered to eRetail sellers such as Amazon. The site offers the most basic functionality of search through their database if you know descriptors for the book/article that you are looking for. Therefore, if you know what you want, you look for it and you find it or not. Afterwards, you can either search for a new item or search through the recommendations of similar items offered by the site.
+
+
+
+```{r, fig.height=4,echo=FALSE}
+#, fig.cap="After Selection"
+library(png)
+library(grid)
+img <- readPNG("/Users/josemawyin/Library/Mobile Documents/com~apple~CloudDocs/Data Science Masters /607/Screen Shot 2019-11-10 at 2.42.59 PM.png")
+ grid.raster(img)
+```
+
+If a match is found, similar options are offered to the user. Some of the options appear connected to the item previously searched for. Let's see how the site looks for similar items.
+
+### Reverse Engineer
+
+Viewing the page source code and looking at the section of the recommended books we notice a line that checks for *#inputTags*. 
+
+```{r, fig.height=4,echo=FALSE}
+#, fig.cap="Tag Search Script"
+library(png)
+library(grid)
+img <- readPNG("/Users/josemawyin/Library/Mobile Documents/com~apple~CloudDocs/Data Science Masters /607/Screen Shot 2019-11-10 at 3.59.00 PM.png")
+ grid.raster(img)
+```
+
+Appears that every item has a series of 25 terms that appeared most frequently in the item. The image below shows for some books, these 25 terms and the frequency at wich they appear in the item. When a file is entered in the database, it is scanned for a word term frequency is performed in order to help categorise the item for the recommender system.
+
+```{r, fig.height=4,echo=FALSE}
+#, fig.cap="Tag Search Script"
+library(png)
+library(grid)
+img <- readPNG("/Users/josemawyin/Library/Mobile Documents/com~apple~CloudDocs/Data Science Masters /607/Screen Shot 2019-11-10 at 4.22.47 PM.png")
+ grid.raster(img)
+```
+
+If this works, the function offers added functionality to the site beyond just an item search based on title, author, ISBN code.
+
+
+### Recommendations
+
+It is though provoking that some though has been giving in the recommender system of this site. It could be shut down at any minute and is not clear what is the financial value that the site gains by offering this service. 
+
+The site is easy to navigate, what it offers is clear and offers value to the user because the user does not have to pay anything. The recommender system seems to be based on similarities in the corpus of the text rather than similarities to what other users have searched for. This functionality could be added but there is no great incentive for an user to register. Anonymous users have a download limit of 3 items per 24 hours, while registered users have a limit of 10 items per 24 hours.
+
+Would it make sense to offer a more user targeted recommender? Term frequency matches seems to work well in generating similar matches in the case when the user does not identify itself. In the case of Amazin wich a similar number of different items, the user has to identify him/herself to provide shipping and payment information. Something that is not required in this case. Therefore, Amazon can use their "Item-to-Item Collaborative Filtering" algorithm to create suggestions for every user. In the case of **ZLibrary**, the user has not a similar incentive for identification and the site cannot create a more personalized list of suggestions.
+
+
+
