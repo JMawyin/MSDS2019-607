@@ -1,0 +1,474 @@
+---
+title: '607 Project 4: eMail Filter'
+author: "Jose Mawyin"
+date: "11/1/2019"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(magrittr)
+library(tictoc) #Timing package
+library(wordcloud)
+```
+
+
+
+```{r,warning=FALSE,message=FALSE, include=FALSE}
+# libraries needed by caret
+library(klaR)
+library(MASS)
+# for the Naive Bayes modelling
+library(caret)
+# to process the text into a corpus
+library(tm)
+# to get nice looking tables
+library(pander)
+# to simplify selections
+library(dplyr)
+library(doMC)
+library(tictoc)
+registerDoMC(cores=4)
+
+# a utility function for % freq tables
+frqtab <- function(x, caption) {
+    round(100*prop.table(table(x)), 1)
+}
+# utility function to summarize model comparison results
+sumpred <- function(cm) {
+    summ <- list(TN=cm$table[1,1],  # true negatives
+                 TP=cm$table[2,2],  # true positives
+                 FN=cm$table[1,2],  # false negatives
+                 FP=cm$table[2,1],  # false positives
+                 acc=cm$overall["Accuracy"],  # accuracy
+                 sens=cm$byClass["Sensitivity"],  # sensitivity
+                 spec=cm$byClass["Specificity"])  # specificity
+    lapply(summ, FUN=round, 2)
+}
+
+
+# modified sligtly fron the code in the book
+convert_counts <- function(x) {
+    x <- ifelse(x > 0, 1, 0)
+    x <- factor(x, levels = c(0, 1), labels = c("Absent", "Present"))
+}
+```
+
+## 607 Project 4: eMail Filter using Naive Bayes Classifier
+
+
+*Outline*
+
+1.  Introduction
+2.  Data
+3.  Data Preparation
+4.  Classifier Training
+5.  Email Classification Using Content
+6.  Email Classification Using Subject
+7.  Concluding Remarks
+8.  Useful Links
+
+
+
+******
+
+### 1. Introduction
+
+This project will show how we can use *guided* machine learning to create a classifier able to sort spam and not-spam(ham) email. This is an example of guided machine learning because we will use a set of labeled data (ham/spam) to train our model.
+
+In this classifier we will use a naive Bayes (*NB*) algorithm for our spam/ham detection. NB is based in the concept of *conditional probability* and uses a series of "predictor variables are conditionally independent of one another given the response value".
+
+$$\begin{array}{l}{\qquad \mathrm{P}(\mathrm{A} | \mathrm{B})=\frac{\mathrm{P}(\mathrm{B} | \mathrm{A}) \cdot \mathrm{P}(\mathrm{A})}{\mathrm{P}(\mathrm{B})}} \\ {\text { where }} \\ {\mathrm{P}(\mathrm{A}) \text { is prior probability, }} \\ {\mathrm{P}(\mathrm{A} | \mathrm{B}) \text { is posterior probability and its read as the probability of the event A }} \\ {\text { happening given the event B. }} \\ {\mathrm{P}(\mathrm{B}) \text { is marginal likelihood }} \\ {\mathrm{P}(\mathrm{B} | \mathrm{A}) \text { is likelihood }} \\ {\quad \mathrm{P}(\mathrm{B} | \mathrm{A}) \text { is likelihood }} \\ {\quad \mathrm{P}(\mathrm{B} | \mathrm{A}) \cdot \mathrm{P}(\mathrm{A}) \text { could also be thought as joint probability, which denotes the }} \\ {\text { probability of A intersection B; in other words, the probability of both event A and B }} \\ {\text { happening together. }}\end{array}$$
+
+Our data will consist of a dataframe containing our response variable, a column with labels spam or ham. And, the text of a series of collected emails classified already to be either spam or ham as the predictor variables.
+
+******
+\newpage
+
+### 2. Data
+
+We will source our data from a set of emails collected by the Apache Spam Assassin dataset that can be found at: 
+
+[https://spamassassin.apache.org/old/publiccorpus/](https://spamassassin.apache.org/old/publiccorpus/)
+
+2 different sets of ham and 2 different sets of spam data will be imported into R using the custom function "email.extract" shown below. 
+
+```{r}
+email.extract <- function(folder, type){
+library(tm)
+library(tm.plugin.mail)
+library(stringr)
+name<-VCorpus(DirSource(folder),list(reader=readMail))
+name.length <- length(name) 
+print(name.length)
+cured.name.df <- as.data.frame(matrix(ncol=5,nrow=name.length))
+for (i in 1:name.length) {
+  cured.name.df[i,1] <- name[[i]][["meta"]][["header"]][["From"]]
+  cured.name.df[i,2] <- sub(".*\\<(.*)\\>.*", "\\1", cured.name.df[i,1], perl=TRUE) #Keep only  email
+  cured.name.df[i,2]<- gsub("@(.+)$", "\\1", cured.name.df[i,2]) #Keep only  domain
+  cured.name.df[i,3] <- name[[i]][["meta"]][["header"]][["Subject"]]
+  cured.name.df[i,4] <- name[[i]][["content"]] %>% as.String()
+  cured.name.df[i,5] <- type
+}
+colnames(cured.name.df) <- c("From","Domain","Subject","Content", "Type")
+return(cured.name.df)
+}
+```
+
+```{r, echo=FALSE, include=FALSE}
+ham.1 <- email.extract("/Users/josemawyin/607Project4Emails/easy_ham/", "ham")
+ham.2 <- email.extract("/Users/josemawyin/607Project4Emails/easy_ham_3/", "ham")
+
+spam.1 <- email.extract("/Users/josemawyin/607Project4Emails/spam_1/", "spam")
+spam.2 <- email.extract("/Users/josemawyin/607Project4Emails/spam_3/", "spam")
+```
+
+The imported datasets contained characters that did not transcode well into *UTF-8* which is the common encoding used when describing Unicode. Many of the steps used in the processing of the data needed before creater our classifier failed when dealing with non *UTF-8* characters.
+
+The r-chunk code below shows the process used to make sure that all the characters in the text were properly transcoded into *UTF-8*.
+
+```{r, warning=FALSE}
+ham <- rbind(ham.1, ham.2)
+ham$Subject <- iconv(ham$Subject, "latin1", "UTF-8",sub='')
+ham$Content <- iconv(ham$Content, "latin1", "UTF-8",sub='')
+
+spam <- rbind(spam.1,spam.2)
+spam$Subject <- iconv(spam$Subject, "latin1", "UTF-8",sub='')
+spam$Content <- iconv(spam$Content, "latin1", "UTF-8",sub='')
+
+spamham <- rbind(ham.1, ham.2,spam.1,spam.2)
+spamham$Type <- as.factor(spamham$Type)
+
+```
+
+\newpage
+
+The four *wordcloud* plots (Figure 1 to Figure 4) in this section show the 100 most comon words found in the Content and Subject of spam and ham email. We can notice some features noticeable from these plots:
+
+* Content *wordcloud* 
+  +Many of the most common spam words seem to be HTML code embbeded in to the body of the email.
+  +The most words in ham emails are usual typical words in the an email.
+
+* Subject *wordcloud* 
+  +Frequent words in the subject of spam emails appear to be ad words such as free, money, business, etc.
+  +Freqency words in the subject of ham eamils do not look at all as common words in a typical email. After checking a few of these ham email, it seems that a significant percentage of them were forwarded and a tag attached to the subject of the email. These tags appear as the most frequent words.
+
+
+```{r,echo=FALSE,fig.cap="Frequent Words in the Content of Spam(Red)", warning = FALSE}
+wordcloud(spam$Content, max.words = 100, min.freq=10,scale = c(3, 0.2), random.order = FALSE, random.color = FALSE,colors= c("indianred1","indianred2","indianred3","indianred"))
+```
+
+```{r,echo=FALSE,fig.cap="Frequent Words in the Content of Not-Spam(Blue)", warning = FALSE}
+wordcloud(ham$Content, max.words = 100, min.freq=10,scale = c(3, 0.2),  random.order = FALSE, random.color = FALSE, colors= c("blue4","blue3","blue2","blue1"))
+```
+
+
+```{r,echo=FALSE,fig.cap="Frequent Words in the Subject of Not-Spam(Blue)", warning = FALSE}
+wordcloud(ham$Subject, max.words = 100, min.freq=10,scale = c(3, 0.2),  random.order = FALSE, random.color = FALSE, colors= c("blue4","blue3","blue2","blue1"))
+```
+
+```{r,echo=FALSE,fig.cap="Frequent Words in the Subject of Spam(Red)", warning = FALSE}
+wordcloud(spam$Subject, max.words = 100, min.freq=10,scale = c(3, 0.2), random.order = FALSE, random.color = FALSE,colors= c("indianred1","indianred2","indianred3","indianred"))
+```
+
+
+Before the following data preparation steps we will combine all the spam and ham datasets into a single set. The table below shows the number of emails per type and ratio of email.
+
+```{r,  echo=FALSE, results = 'asis'}
+ham.size <- nrow(ham)
+spam.size <- nrow(spam)
+
+cat("The spam dataframe contains", spam.size,"files. While the ham dataframe contains", ham.size,"files. The ratio of spam to ham is",(spam.size/ham.size) %>% round(2))
+table(spamham$Type)
+```
+
+******
+\newpage
+
+### 3. Data Preparation
+
+
+
+```{r,warning=FALSE,message=FALSE, include=FALSE}
+tic()
+Content.corpus <- iconv(spamham$Content, "WINDOWS-1252","UTF-8")
+email_corpus <- VCorpus(VectorSource(Content.corpus))
+#inspect(email_corpus[1:2])
+toc()
+```
+
+The next step is to create a *DocumentTermMatrix* that describes the frequency of terms that occur in a collection of documents.
+
+Before the creation of the *DocumentTermMatrix* we need to do the following:
+
+*Change the case of all the words to lower-case.
+*Remove all numbers.
+*Remove all stop-words or words that are the most common words in a language. The tm package gives the option to remove english stop-words only.
+*Remove all punctuation signs.
+*Remove all extra spaces between words.
+```{r}
+tic()
+#email_corpus <- Corpus(VectorSource(spamham$Subject))
+email_corpus_clean <- email_corpus %>%
+    tm_map(content_transformer(tolower)) %>% 
+    tm_map(removeNumbers) %>%
+    tm_map(removeWords, stopwords(kind="en")) %>%
+    tm_map(removePunctuation) %>%
+    tm_map(stripWhitespace)
+email_dtm <- DocumentTermMatrix(email_corpus_clean)
+email_dtm <- removeSparseTerms(email_dtm, 0.95) #Removing sparse data
+toc()
+```
+
+Now that we have our *DocumentTermMatrix* we remove those words that appear with low frequency in the emails.
+
+******
+
+\newpage
+
+### 4. Classifier Training
+
+First, let's create a subset of spam/ham emails to train (75% of all emails) our NB classifier and a subset of emails to test (25% of all emails) the accuracy of the classifier.
+
+```{r}
+train_index <- createDataPartition(spamham$Type, p=0.75, list=FALSE)
+
+email_raw_train <- spamham[train_index,]
+email_corpus_clean_train <- email_corpus_clean[train_index]
+email_dtm_train <- email_dtm[train_index,]
+
+
+email_raw_test <- spamham[-train_index,]
+email_corpus_clean_test <- email_corpus_clean[-train_index]
+email_dtm_test <- email_dtm[-train_index,]
+```
+
+Then we will create a dictionary of words that appear with a frequency of at least 5 times in the our dataset.
+
+```{r}
+tic()
+#Create a dictionary of words that appear at least 5 times in the emails.
+email_dict <- findFreqTerms(email_dtm_train, lowfreq=5)
+
+email_train <- DocumentTermMatrix(email_corpus_clean_train, list(dictionary=email_dict))
+email_train <- email_train %>% apply(MARGIN=2, FUN=convert_counts)
+
+email_test <- DocumentTermMatrix(email_corpus_clean_test, list(dictionary=email_dict))
+email_test <- email_test %>% apply(MARGIN=2, FUN=convert_counts)
+
+toc()
+```
+```{r, results = 'asis'}
+paste("This is the dictionary of", length(email_dict), "terms that appear at least 5 times in the emails and that will be used determine if an email is spam or ham.")
+```
+
+
+```{r, results = 'asis'}
+paste(email_dict, collapse = "   ")
+```
+
+
+```{r, include=FALSE}
+train_index <- createDataPartition(spamham$Type, p=0.75, list=FALSE)
+email_raw_test <- spamham[-train_index,]
+email_corpus_clean_test <- email_corpus_clean[-train_index]
+email_dtm_test <- email_dtm[-train_index,]
+email_test <- DocumentTermMatrix(email_corpus_clean_test, list(dictionary=email_dict))
+email_test <- email_test %>% apply(MARGIN=2, FUN=convert_counts)
+
+```
+
+Now we can use the parsed email subject text as our predictor variables to train a **NB** classifier and the Type of email (spam/ham) as the response variable. This classifer will use the following parameters as well:
+
+*usekernel* parameter allows us to use a kernel density estimate for continuous variables versus a guassian density estimate.
+
+*adjust* allows us to adjust the bandwidth of the kernel density (larger numbers mean more flexible density estimate).
+
+*fL* allows us to incorporate the Laplace smoother.
+
+```{r,warning=FALSE,message=FALSE}
+ctrl <- trainControl(method="cv", 10)
+set.seed(12358)
+email_model2 <- train(email_train, email_raw_train$Type, method="nb", 
+                    tuneGrid=data.frame(.fL=1, .usekernel=FALSE, .adjust = seq(0, 5, by = 1)),
+                trControl=ctrl)
+email_model2
+```
+
+
+
+
+******
+\newpage
+
+### 5. Email Classification Using Content
+
+Our NB classifier model was trined using email content data. Let's see how does it perform predicting wether emails are either spam or ham.
+
+```{r,warning=FALSE,message=FALSE}
+email_predict2 <- predict(email_model2, email_test)
+cm2 <- confusionMatrix(email_predict2, email_raw_test$Type, positive="spam")
+cm2
+```
+
+The prediction outputs a series of performance parameters in the form of a *Confusion Matrix* that is a table used to describe the performance of a classification model or "classifier".
+
+**Confusion Matrix**
+
+The confusion matrix is a two by two table that contains four outcomes produced by a binary classifier. Various measures, such as error-rate, accuracy, specificity, sensitivity, and precision, are derived from the confusion matrix. 
+
+
+**Sensitivity (Recall or True positive rate)**
+
+Sensitivity (SN) is calculated as the number of correct positive predictions divided by the total number of positives. It is also called recall (REC) or true positive rate (TPR). The best sensitivity is 1.0, whereas the worst is 0.0.
+
+$\mathrm{SN}=\frac{\mathrm{TP}}{\mathrm{TP}+\mathrm{FN}}=\frac{\mathrm{TP}}{\mathrm{P}}$
+
+
+**Specificity (True negative rate)**
+
+Specificity (SP) is calculated as the number of correct negative predictions divided by the total number of negatives. It is also called true negative rate (TNR). The best specificity is 1.0, whereas the worst is 0.0.
+
+$\mathrm{SP}=\frac{\mathrm{TN}}{\mathrm{TN}+\mathrm{FP}}=\frac{\mathrm{TN}}{\mathrm{N}}$
+
+
+The traces in Figure 5 show how the performance parameters described the previous page change when we use our NB model to classify different subsets of spam+ham emails.
+
+```{r,warning=FALSE,message=FALSE,fig.cap="Accuracy(Red), Sensitivity(Blue) and Specificity(Green)", cache=TRUE, echo=FALSE}
+N <- 40
+Parameters.df <- data.frame(Index=integer(),Accuracy=double(),Sensitivity=double(),Specificity=double())
+for (i in 1:N){
+train_index <- createDataPartition(spamham$Type, p=0.75, list=FALSE)
+email_raw_test <- spamham[-train_index,]
+email_corpus_clean_test <- email_corpus_clean[-train_index]
+email_dtm_test <- email_dtm[-train_index,]
+email_test <- DocumentTermMatrix(email_corpus_clean_test, list(dictionary=email_dict))
+email_test <- email_test %>% apply(MARGIN=2, FUN=convert_counts)
+
+
+
+email_predict2 <- predict(email_model2, email_test)
+cm2 <- confusionMatrix(email_predict2, email_raw_test$Type, positive="spam")
+cm2$overall
+Accuracy <- (cm2$overall[['Accuracy']]) %>% round(4)
+Sensitivity <- (cm2$byClass[['Sensitivity']]) %>% round(4)
+Specificity <- (cm2$byClass[['Specificity']]) %>% round(4)
+Parameters.df[i,1] <- i
+Parameters.df[i,2] <- Accuracy
+Parameters.df[i,3] <- Sensitivity
+Parameters.df[i,4] <- Specificity
+}
+#Parameters.df
+ggplot(Parameters.df, aes(x=Index))+ geom_line(aes(y=Accuracy), color = "red") + geom_line(aes(y=Sensitivity), color = "blue") + geom_line(aes(y=Specificity), color = "green") + ggtitle("Spam Detection for Different Spam+Ham Samples") + ylab("Percentage (%)")
+```
+
+```{r,echo=FALSE, results = 'asis'}
+cat("After ",N ," differet samples:  
+    \nAverage Accuracy is:", mean(Parameters.df$Accuracy),
+    "\nAverage Sensitivity is:", mean(Parameters.df$Sensitivity),
+    "\nAverage Specificity is:", mean(Parameters.df$Specificity))
+```
+
+The *NB* classifier performs well in separating spam/ham in different email subsets with an average accuracy of 0.93652. The sensitivity is a bit lower at 0.837705 while the Specificity is the highest at 0.9736275. 
+
+******
+\newpage
+
+### 6. Email Classification Using Subject
+
+How well does the NB classifier that we created work with much a different set of spam/ham data? We can use the subject information of the spam/ham dataset to see if we can use the same NB classifier to sort emails.
+
+```{r,warning=FALSE,message=FALSE, include=FALSE}
+Subject.corpus <- iconv(spamham$Subject, "WINDOWS-1252","UTF-8")
+email_corpus <- Corpus(VectorSource(Subject.corpus))
+inspect(email_corpus[1:20])
+```
+
+
+```{r, include=FALSE}
+email_corpus_clean <- email_corpus %>%
+    tm_map(content_transformer(tolower)) %>% 
+    tm_map(removeNumbers) %>%
+    tm_map(removeWords, stopwords(kind="en")) %>%
+    tm_map(removePunctuation) %>%
+    tm_map(stripWhitespace)
+email_dtm <- DocumentTermMatrix(email_corpus_clean)
+email_dtm <- removeSparseTerms(email_dtm, 0.95) #Removing sparse data
+```
+
+
+
+
+```{r, warning=FALSE,message=FALSE,fig.cap="Accuracy(Red), Sensitivity(Blue) and Specificity(Green)", cache=TRUE, echo=FALSE}
+N <- 2
+Parameters.df <- data.frame(Index=integer(),Accuracy=double(),Sensitivity=double(),Specificity=double())
+for (i in 1:N){
+train_index <- createDataPartition(spamham$Type, p=0.75, list=FALSE)
+email_raw_test <- spamham[-train_index,]
+email_corpus_clean_test <- email_corpus_clean[-train_index]
+email_dtm_test <- email_dtm[-train_index,]
+email_test <- DocumentTermMatrix(email_corpus_clean_test, list(dictionary=email_dict))
+email_test <- email_test %>% apply(MARGIN=2, FUN=convert_counts)
+
+
+
+email_predict2 <- predict(email_model2, email_test)
+cm2 <- confusionMatrix(email_predict2, email_raw_test$Type, positive="spam")
+cm2$overall
+Accuracy <- (cm2$overall[['Accuracy']]) %>% round(4)
+Sensitivity <- (cm2$byClass[['Sensitivity']]) %>% round(4)
+Specificity <- (cm2$byClass[['Specificity']]) %>% round(4)
+Parameters.df[i,1] <- i
+Parameters.df[i,2] <- Accuracy
+Parameters.df[i,3] <- Sensitivity
+Parameters.df[i,4] <- Specificity
+}
+#Parameters.df
+ggplot(Parameters.df, aes(x=Index))+ geom_line(aes(y=Accuracy), color = "red") + geom_line(aes(y=Sensitivity), color = "blue") + geom_line(aes(y=Specificity), color = "green") + ggtitle("Spam Detection for Different Samples Using Subject") + ylab("Percentage (%)")
+```
+
+```{r,echo=FALSE, results = 'asis'}
+cat("After ",N ," differet samples:  
+    \nAverage Accuracy is:", mean(Parameters.df$Accuracy),
+    "\nAverage Sensitivity is:", mean(Parameters.df$Sensitivity),
+    "\nAverage Specificity is:", mean(Parameters.df$Specificity))
+```
+
+The performance is horrible. The text information in the Content of our emails has a completely different set of response of predictor variables as compared to the Subject of an emails. The text information of an email Subject is too short and has a different identifying fingerprints.
+
+******
+\newpage
+### 7. Concluding Remarks
+
+We have shown how the Naive Bayes algorithm can be used to sort text documents of two response variables (spam/ham). There are other more complicated techniques of machine learning available but *NB* performs well despite its simplicity.
+
+We have also seen how fine-tuned is the NB classifier that we trained to one particular type of data. In this case, the classifier excels in detecting spam/ham using Content data but fails completely when using the same classifier with a related dataset (Subject data).
+
+******
+
+### 8.  Useful Links
+
+[Naive Bayes Classifier](https://uc-r.github.io/naive_bayes)
+
+[Basic evaluation measures from the confusion matrix](https://classeval.wordpress.com/introduction/basic-evaluation-measures/)
+
+[A List of Available Models in Caret](https://rdrr.io/cran/caret/man/models.html)
+
+[Supervised classification with text data](https://cfss.uchicago.edu/notes/supervised-text-classification/)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
