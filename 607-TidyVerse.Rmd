@@ -1,0 +1,104 @@
+---
+title: "607-Tidyverse"
+author: "Jose Mawyin"
+date: "12/9/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(knitr)
+library(rgdal)
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+```
+
+## 607 - Using Tidyverse Packages on NYPD Arrests Data
+
+>This programming sample “vignette” will showcase how three different Tidyverse package can be used to import, manipulate and graph the following dataset:
+
+>"List of every arrest in NYC going back to 2006 through the end of the previous calendar year. This is a breakdown of every arrest effected in NYC by the NYPD going back to 2006 through the end of the previous calendar year. This data is manually extracted every quarter and reviewed by the Office of Management Analysis and Planning before being posted on the NYPD website. Each record represents an arrest effected in NYC by the NYPD and includes information about the type of crime, the location and time of enforcement. In addition, information related to suspect demographics is also included. This data can be used by the public to explore the nature of police enforcement activity. Please refer to the attached data footnotes for additional information about this dataset."
+
+https://catalog.data.gov/dataset/nypd-arrests-data-historic
+
+### Using readr
+
+>The readr package can be used to import our dataset and the output will be a Tibble wich is a dataframe with extra properties suitable for data analysis. Below we import our dataset and "readr" outputs some column properties that may be of interest.
+
+```{r}
+NY.Arrest <- read_csv("/Users/josemawyin/Downloads/NYPD_Arrests.csv")
+```
+
+>The lenght and number of columns dimensions of of our initial dataframe is `r dim(NY.Arrest)`. It is always useful to take a peek into imported data even if just to see that the import process did not make a mess of things.
+
+```{r}
+glimpse(NY.Arrest)
+```
+
+### Using dplyr and stringr
+
+>We will use the filter() function from dplyr and the function str_detect() from stringr to only select the arrest of perpetrators in the Borough of Queens, using "Dangerous Weapons", male and in the year of 2017. We can use the "&" pipeline to sequentially apply all these filters.
+
+```{r}
+Queens.Dangerous.Male.2017.Arrests <- filter(NY.Arrest, NY.Arrest$ARREST_BORO == "Q" & NY.Arrest$OFNS_DESC =="DANGEROUS WEAPONS" & NY.Arrest$PERP_SEX=="M" & str_detect(NY.Arrest$ARREST_DATE, '2017'))
+```
+
+>The lenght and number of columns dimensions of our filtered dataframe is `r dim(Queens.Dangerous.Male.2017.Arrests)`.
+
+\pagebreak
+
+### Using ggplot2
+
+>Let's plot the geographic distribution of the arrested perpetrators in NY. First, let's get a geographic outline of NY from a "shapefile".
+
+```{r}
+counties<-readOGR("/Users/josemawyin/Downloads/nybb_19d/nybb.shp", layer="nybb")
+```
+
+>The following 3 chunks convert the Latitude and Longitude information from the arrest dataframe into a format that ggplot can recognize and use for plotting.
+
+```{r}
+proj4string(counties)
+```
+
+```{r}
+class(Queens.Dangerous.Male.2017.Arrests)
+coordinates(Queens.Dangerous.Male.2017.Arrests)<-~Longitude+Latitude
+class(Queens.Dangerous.Male.2017.Arrests)
+```
+
+```{r}
+proj4string(Queens.Dangerous.Male.2017.Arrests)
+proj4string(Queens.Dangerous.Male.2017.Arrests)<-CRS("+proj=longlat +datum=NAD83")
+mapdata<-spTransform(Queens.Dangerous.Male.2017.Arrests, CRS(proj4string(counties)))
+identical(proj4string(mapdata),proj4string(counties))
+```
+
+>Finally, let's map the geographic distribution of the perpetrators splitting the maps in facets containing the reported race.
+
+```{r}
+mapdata<-data.frame(mapdata)
+names(mapdata)[names(mapdata)=="Longitude"]<-"x"
+names(mapdata)[names(mapdata)=="Latitude"]<-"y"
+map <- ggplot() +geom_polygon(data=counties, aes(x=long,  y=lat, group=group))+  geom_point(data=mapdata, aes(x=x, y=y), color="red")
+map + facet_wrap(PERP_RACE ~ ., ncol=2)
+```
+
+
+\pagebreak
+
+### Final Comments
+
+>We have seen through these “vignette” how tightly together Tidyverse packages work to import, manipulate and display data. The packages used in this excercise extend the built-in capabilities of R, streamline user workflow and help to get things done quickly.
+
+
+
+### Useful Links
+Mapping in R using the ggplot2 package
+http://zevross.com/blog/2014/07/16/mapping-in-r-using-the-ggplot2-package/
+
+Political and Administrative Districts - Download and Metadata for New York City
+https://www1.nyc.gov/site/planning/data-maps/open-data/districts-download-metadata.page
