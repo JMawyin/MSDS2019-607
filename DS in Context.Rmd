@@ -1,0 +1,106 @@
+---
+title: "Data Science in Context"
+author: "Jose Mawyin"
+date: "10/1/2019"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)  # data manipulation
+library(cluster)    # clustering algorithms
+library(factoextra) # clustering algorithms & visualization
+```
+
+## Cluster analysis
+
+###Jose A. Mawyin
+###DATA 607     October 2, 2019
+
+
+## Slide with Bullets
+
+What is Clustering?
+
+Is trying to find similarity in things using shared characteristics.
+- Bullet 1
+- Bullet 2
+- Bullet 3
+
+## Slide with R Output
+
+```{r cars, echo = TRUE}
+df <- USArrests
+df <- na.omit(df)
+head(df)
+```
+
+## Slide with Plot
+
+```{r pressure}
+df <- scale(df)
+head(df)
+```
+
+```{r}
+distance <- get_dist(df)
+fviz_dist(distance, gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
+```
+
+```{r}
+
+k4 <- kmeans(df, centers = 4, nstart = 25)
+k4
+
+```
+
+```{r}
+str(k4)
+
+```
+
+
+```{r}
+
+fviz_cluster(k4, data = df, show.clust.cent = TRUE, star.plot = TRUE, ellipse.type = "euclid")
+
+```
+
+```{r}
+k3 <- kmeans(df, centers = 3, nstart = 25)
+k4 <- kmeans(df, centers = 4, nstart = 25)
+k5 <- kmeans(df, centers = 5, nstart = 25)
+
+# plots to compare
+#p1 <- fviz_cluster(k2, geom = "point", data = df) + ggtitle("k = 2")
+p2 <- fviz_cluster(k3, geom = "point",  data = df) + ggtitle("k = 3")
+p3 <- fviz_cluster(k4, geom = "point",  data = df) + ggtitle("k = 4")
+p4 <- fviz_cluster(k5, geom = "point",  data = df) + ggtitle("k = 5")
+
+library(gridExtra)
+grid.arrange( p2, p3, p4, nrow = 2)
+```
+
+```{r}
+# Dissimilarity matrix
+d <- dist(df, method = "euclidean")
+# Hierarchical Clustering using Ward's method
+Dendro <- hclust(d, method = "ward.D2" )
+```
+
+
+```{r}
+# Dissimilarity matrix
+d <- dist(df, method = "euclidean")
+# Hierarchical Clustering using Ward's method
+Dendro <- hclust(d, method = "ward.D2" )
+#Plot Dendrogram
+plot(Dendro, cex = 0.6)
+#Plot resctangles around "k"" groups 
+rect.hclust(Dendro, k = 3, border = 2:5)
+```
+
+
+
+
+
